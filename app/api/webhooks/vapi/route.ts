@@ -109,6 +109,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // 4. Forward to Make.com automation (Google Sheets, Gmail/Email, Calendar) if configured
+    const makeWebhookUrl = process.env.MAKE_WEBHOOK_URL;
+    if (makeWebhookUrl) {
+      try {
+        await fetch(makeWebhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: "call_completed",
+            call_id: callId,
+            customer_name: customerName,
+            customer_phone: customerPhone,
+            customer_address: customerAddress,
+            issue_description: issueDescription,
+            summary: summary,
+            transcript: transcript,
+            recording_url: recordingUrl,
+            duration_seconds: durationSeconds,
+            direction: direction,
+            call_status: callStatus,
+            status: leadStatus,
+            timestamp: new Date().toISOString(),
+          }),
+        });
+        console.log(`[VoXUSA Vapi Webhook] Forwarded call data to Make.com automation successfully`);
+      } catch (makeErr) {
+        console.warn("[VoXUSA Vapi Webhook] Make.com forwarding note:", makeErr);
+      }
+    }
+
     console.log(`[VoXUSA Vapi Webhook] Successfully logged ${direction} call (${callStatus}) for ${customerName}`);
     return NextResponse.json({ success: true, callId, direction, callStatus, leadStatus });
   } catch (err: any) {
