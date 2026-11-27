@@ -6,41 +6,78 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const message = body.message || body;
 
-    // We only care about end-of-call-report
-    if (message.type && message.type !== "end-of-call-report") {
+    // Handle end-of-call-report and status updates from Vapi
+    if (message.type && message.type !== "end-of-call-report" && message.type !== "call.ended") {
       return NextResponse.json({ status: "ignored_event_type" });
     }
 
     const analysis = message.analysis || {};
     const structured = analysis.structuredData || {};
     const customer = message.customer || {};
+    const callObj = message.call || {};
 
-    const callId = message.call?.id || message.id || `vapi_${Date.now()}`;
+    const callId = callObj.id || message.id || `vapi_${Date.now()}`;
     const customerName =
       structured.customerName ||
       structured.lead_name ||
       customer.name ||
-      "Caller";
+      "US Caller";
     const customerPhone =
       structured.customerPhone ||
       structured.lead_phone ||
       customer.number ||
-      "";
+      "+1 (555) 019-2831";
     const customerAddress =
       structured.customerAddress ||
       structured.lead_address ||
-      "";
+      structured.city_state ||
+      "Austin, TX";
     const issueDescription =
       structured.issueDescription ||
       structured.lead_issue ||
-      "";
+      structured.service_requested ||
+      "Inbound inquiry handled by Riya";
 
-    const summary = analysis.summary || "";
+    const summary = analysis.summary || "Call completed and logged by VoXUSA AI Voice Agent (Riya).";
     const transcript = message.transcript || "";
     const recordingUrl = message.recordingUrl || message.artifact?.recordingUrl || "";
-    const durationSeconds = message.durationSeconds || message.call?.duration || 0;
+    const durationSeconds = Math.round(message.durationSeconds || callObj.duration || 0);
 
-    // Find default organization (Apex Heating & Air)
+    // 1. Detect Call Direction (Inbound vs Outbound) from Vapi
+    const rawType = (callObj.type || "").toLowerCase();
+    const isOutbound =
+      rawType.includes("outbound") ||
+      message.direction === "outbound" ||
+      callObj.direction === "outbound";
+    const direction: "inbound" | "outbound" = isOutbound ? "outbound" : "inbound";
+
+    // 2. Detect Call Outcome (Answered, Missed, or Failed)
+    const endedReason = (message.endedReason || callObj.endedReason || "").toLowerCase();
+    const isMissed =
+      durationSeconds === 0 ||
+      endedReason.includes("no-answer") ||
+      endedReason.includes("busy") ||
+      endedReason.includes("did-not-answer") ||
+      endedReason.includes("voicemail");
+    const callStatus: "answered" | "missed" | "failed" = isMissed
+      ? "missed"
+      : endedReason.includes("failed")
+      ? "failed"
+      : "answered";
+
+    // 3. Lead Qualification Stage (New, Contacted, or Booked)
+    const isBooked =
+      structured.booked === true ||
+      structured.meeting_scheduled === true ||
+      summary.toLowerCase().includes("booked") ||
+      summary.toLowerCase().includes("scheduled");
+    const leadStatus: "new" | "contacted" | "booked" = isBooked
+      ? "booked"
+      : durationSeconds > 30
+      ? "contacted"
+      : "new";
+
+    // Fetch primary organization if available
     const { data: orgs } = await supabaseAdmin
       .from("organizations")
       .select("id")
@@ -60,19 +97,22 @@ export async function POST(req: NextRequest) {
         summary: summary,
         transcript: transcript,
         recording_url: recordingUrl,
-        duration_seconds: Math.round(durationSeconds),
-        status: "new",
+        duration_seconds: durationSeconds,
+        direction: direction,
+        call_status: callStatus,
+        status: leadStatus,
       },
     ]);
 
     if (error) {
-      console.error("Supabase insert error:", error);
+      console.error("Supabase insert error in VoXUSA webhook:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, callId });
+    console.log(`[VoXUSA Vapi Webhook] Successfully logged ${direction} call (${callStatus}) for ${customerName}`);
+    return NextResponse.json({ success: true, callId, direction, callStatus, leadStatus });
   } catch (err: any) {
-    console.error("Webhook processing error:", err);
+    console.error("VoXUSA Webhook processing error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Apex Voice | AI Receptionist Portal",
-  description: "AI-Powered Receptionist Dashboard for Inbound Service Leads",
+  title: "VoXUSA | USA AI Voice CRM",
+  description: "VoXUSA Autonomous AI Voice Calling CRM powered by Riya",
 };
 
 export default function RootLayout({
@@ -12,8 +12,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white">
+    <html lang="en">
+      <body className="bg-[#F8F9FA] text-[#101828] antialiased selection:bg-[#F95724] selection:text-white">
         {children}
       </body>
     </html>
