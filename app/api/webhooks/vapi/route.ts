@@ -109,8 +109,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 4. Forward to Make.com automation (Google Sheets, Gmail/Email, Calendar) if configured
-    const makeWebhookUrl = process.env.MAKE_WEBHOOK_URL;
+    // 4. Forward to Make.com automation (Google Sheets, Gmail/Email, Calendar)
+    const makeWebhookUrl =
+      process.env.MAKE_WEBHOOK_URL ||
+      "https://hook.us2.make.com/8gfta6tbfkzkdfw5vteiy6rja0rkfj14";
     if (makeWebhookUrl) {
       try {
         await fetch(makeWebhookUrl, {
